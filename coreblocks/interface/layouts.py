@@ -320,6 +320,7 @@ class RFLayouts:
         self.rf_free = make_layout(fields.reg_id)
         self.rf_read_out = make_layout(fields.reg_val, self.valid)
         self.rf_write = make_layout(fields.reg_id, fields.reg_val)
+        self.rf_read_count = gen_params.frontend_superscalarity * 2 + int(gen_params._generate_test_hardware)
 
 
 class RATLayouts:
@@ -372,9 +373,8 @@ class ROBLayouts:
         fields = gen_params.get(CommonLayoutFields)
 
         self.data_layout = make_layout(
-            fields.rl_dst,
-            fields.rp_dst,
-            fields.tag_increment,
+            *[fields.rl_dst, fields.rp_dst, fields.tag_increment]
+            + ([fields.pc] if gen_params._generate_test_hardware else [])
         )
 
         self.rob_data: LayoutListField = ("rob_data", self.data_layout)
@@ -861,3 +861,9 @@ class PrivUnitLayouts:
         Needed for re-encoding the instruction for xtval, when access is illegal.
         """
         assert self.sfencevma_imm_layout.size == gen_params.isa.xlen
+
+
+class DebugInterfaceLayouts:
+    def __init__(self, gen_params: GenParams):
+        fields = gen_params.get(CommonLayoutFields)
+        self.emit = make_layout(fields.pc, fields.rl_dst, fields.rp_dst)

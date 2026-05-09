@@ -3,6 +3,7 @@ from amaranth.lib.data import View
 from transactron.utils import count_trailing_zeros
 from coreblocks.interface.layouts import (
     CoreInstructionCounterLayouts,
+    DebugInterfaceLayouts,
     ExceptionRegisterLayouts,
     FetchLayouts,
     InternalInterruptControllerLayouts,
@@ -81,6 +82,10 @@ class Retirement(Elaboratable):
             max_latency=2 * 2**gen_params.rob_entries_bits,
         )
 
+        self.debug_emit = (
+            Method(i=gen_params.get(DebugInterfaceLayouts).emit) if gen_params._generate_test_hardware else None
+        )
+
         layouts = self.gen_params.get(RetirementLayouts)
         self.dependency_manager = DependencyContext.get()
         self.core_state = Method(o=self.gen_params.get(RetirementLayouts).core_state)
@@ -117,6 +122,15 @@ class Retirement(Elaboratable):
 
             self.instret_csr.increment(m)
             self.perf_instr_ret.incr(m)
+            if self.debug_emit is not None:
+                self.debug_emit(
+                    m,
+                    {
+                        "pc": rob_entry.rob_data.pc,
+                        "rl_dst": rob_entry.rob_data.rl_dst,
+                        "rp_dst": rob_entry.rob_data.rp_dst,
+                    },
+                )
 
         def flush_instr(i: int, rob_entry: View):
             # get original rp_dst mapped to instruction rl_dst in R-RAT

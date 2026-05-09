@@ -1,3 +1,4 @@
+from typing import Optional
 from amaranth import *
 from amaranth.lib.wiring import Component, flipped, connect, In, Out
 from transactron import Transaction
@@ -28,6 +29,7 @@ from coreblocks.backend.announcement import ResultAnnouncement
 from coreblocks.backend.retirement import Retirement
 from coreblocks.peripherals.bus_adapter import WishboneMasterAdapter
 from coreblocks.peripherals.wishbone import WishboneMaster, WishboneInterface
+from coreblocks.peripherals.debug_interface import DebugInterface, DebugInterfaceDriver
 from transactron.lib.metrics import HwMetricsEnabledKey, TaggedCounter
 
 __all__ = ["Core"]
@@ -37,6 +39,7 @@ class Core(Component):
     wb_instr: WishboneInterface
     wb_data: WishboneInterface
     interrupts: Signal
+    debug_interface: Optional[DebugInterface]
 
     def __init__(self, *, gen_params: GenParams):
         super().__init__(
@@ -45,6 +48,11 @@ class Core(Component):
                 "wb_data": Out(WishboneInterface(gen_params.wb_params).signature),
                 "interrupts": In(ISA_RESERVED_INTERRUPTS + gen_params.interrupt_custom_count),
             }
+            | (
+                {"debug_interface": Out(DebugInterface(gen_params).signature)}
+                if gen_params._generate_test_hardware
+                else {}
+            )
         )
 
         self.gen_params = gen_params
@@ -73,7 +81,6 @@ class Core(Component):
         self.RRAT = RRAT(gen_params=self.gen_params)
         self.RF = RegisterFile(
             gen_params=self.gen_params,
-            read_ports=2 * self.gen_params.frontend_superscalarity,
             write_ports=self.gen_params.announcement_superscalarity,
             free_ports=self.gen_params.retirement_superscalarity,
         )
@@ -103,6 +110,10 @@ class Core(Component):
             "backend.announcement.announcement_count",
             "Number of instruction results announced in one cycle",
             tags=range(gen_params.announcement_superscalarity + 1),
+        )
+
+        self.debug_interface_driver = (
+            DebugInterfaceDriver(self.gen_params) if gen_params._generate_test_hardware else None
         )
 
     def elaborate(self, platform):
@@ -193,5 +204,19 @@ class Core(Component):
         retirement.checkpoint_tag_free.provide(crat.free_tag)
 
         m.submodules.func_blocks_unifier = self.func_blocks_unifier
+
+        # wire debug interface
+        if (
+            self.debug_interface is not None
+            and self.debug_interface_driver is not None
+            and retirement.debug_emit is not None
+        ):
+            connect(m.top_module, flipped(self.debug_interface), self.debug_interface_driver.iface)
+
+            m.submodules.debug_interface_driver = self.debug_interface_driver
+            retirement.debug_emit.provide(self.debug_interface_driver.emit)
+
+            self.debug_interface_driver.read_req.provide(rf.read_req)
+            self.debug_interface_driver.read_resp.provide(rf.read_resp)
 
         return m

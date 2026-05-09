@@ -16,23 +16,24 @@ log = logging.HardwareLogger("core_structs.rf")
 
 
 class RegisterFile(Elaboratable):
-    def __init__(self, *, gen_params: GenParams, read_ports: int, write_ports: int, free_ports: int):
+    def __init__(self, *, gen_params: GenParams, write_ports: int, free_ports: int):
         self.gen_params = gen_params
 
         layouts = gen_params.get(RFLayouts)
         self.read_layout = layouts.rf_read_out
+        self.read_ports = layouts.rf_read_count
         self.entries = MemoryBank(
             memory_type=gen_params.multiport_memory_type if write_ports > 1 else memory.Memory,
             shape=gen_params.isa.xlen,
             depth=2**gen_params.phys_regs_bits,
-            read_ports=read_ports,
+            read_ports=self.read_ports,
             write_ports=write_ports,
             read_on_resp=True,
         )
         self.valids = Array(Signal(init=k == 0) for k in range(2**gen_params.phys_regs_bits))
 
-        self.read_req = Methods(read_ports, i=layouts.rf_read_in)
-        self.read_resp = Methods(read_ports, i=layouts.rf_read_in, o=layouts.rf_read_out)
+        self.read_req = Methods(self.read_ports, i=layouts.rf_read_in)
+        self.read_resp = Methods(self.read_ports, i=layouts.rf_read_in, o=layouts.rf_read_out)
         self.write = Methods(write_ports, i=layouts.rf_write)
         self.free = Methods(free_ports, i=layouts.rf_free)
 

@@ -61,7 +61,7 @@ class SchedulerTestCircuit(Elaboratable):
         )
         m.submodules.crat = self.crat = crat = CheckpointRAT(gen_params=self.gen_params)
         m.submodules.rob = self.rob = ReorderBuffer(self.gen_params, 1)
-        m.submodules.rf = self.rf = RegisterFile(gen_params=self.gen_params, read_ports=2, write_ports=1, free_ports=1)
+        m.submodules.rf = self.rf = RegisterFile(gen_params=self.gen_params, write_ports=1, free_ports=1)
 
         self.rs_alloc: list[TestbenchIO] = []
         self.rs_insert: list[TestbenchIO] = []

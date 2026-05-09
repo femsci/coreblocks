@@ -9,7 +9,13 @@ from transactron.lib.metrics import TaggedCounter
 from transactron.utils import OneHotSwitchDynamic, assign, AssignType
 from transactron.utils.dependencies import DependencyContext
 
-from coreblocks.interface.layouts import RATLayouts, RFLayouts, ROBLayouts, RSFullDataLayout, SchedulerLayouts
+from coreblocks.interface.layouts import (
+    RATLayouts,
+    RFLayouts,
+    ROBLayouts,
+    RSFullDataLayout,
+    SchedulerLayouts,
+)
 from coreblocks.params import GenParams
 from coreblocks.arch.optypes import OpType
 from coreblocks.interface.keys import CoreStateKey
@@ -223,6 +229,13 @@ class ROBAllocation(Elaboratable):
                         "rp_dst": instr.regs_p.rp_dst,
                         "tag_increment": instr.tag_increment,
                     }
+                    | (
+                        {
+                            "pc": instr.pc,
+                        }
+                        if self.gen_params._generate_test_hardware
+                        else {}
+                    )
                     for instr in instrs.data
                 ],
             )
@@ -265,7 +278,7 @@ class RSSelection(Elaboratable):
         self.get_instrs = Method(i=[("count", range(gen_params.frontend_superscalarity + 1))], o=layouts.rs_select_in)
         self.peek_instrs = Method(o=layouts.rs_select_in)
         self.push_instrs = Method(i=layouts.rs_select_out)
-        self.rf_read_req = Methods(2 * gen_params.frontend_superscalarity, i=gen_params.get(RFLayouts).rf_read_in)
+        self.rf_read_req = Methods(gen_params.get(RFLayouts).rf_read_count, i=gen_params.get(RFLayouts).rf_read_in)
         self.rs_select = [Method(o=conf.get_layouts(gen_params).select_out) for conf in gen_params.func_units_config]
 
         self.perf_rs_selection_count = TaggedCounter(
@@ -361,7 +374,7 @@ class RSInsertion(Elaboratable):
 
         self.get_instrs = Method(o=layouts.rs_insert_in)
         self.rf_read_resp = Methods(
-            2 * gen_params.frontend_superscalarity,
+            gen_params.get(RFLayouts).rf_read_count,
             i=gen_params.get(RFLayouts).rf_read_in,
             o=gen_params.get(RFLayouts).rf_read_out,
         )
@@ -522,9 +535,12 @@ class Scheduler(Elaboratable):
         self.crat_active_tags = Method(o=gen_params.get(RATLayouts).get_active_tags_out)
         self.crat_tag = Method(i=gen_params.get(RATLayouts).crat_tag_in, o=gen_params.get(RATLayouts).crat_tag_out)
         self.rob_put = Method(i=gen_params.get(ROBLayouts).put_layout, o=gen_params.get(ROBLayouts).put_out_layout)
-        self.rf_read_req = Methods(2 * gen_params.frontend_superscalarity, i=gen_params.get(RFLayouts).rf_read_in)
+
+        read_port_cnt = gen_params.get(RFLayouts).rf_read_count
+
+        self.rf_read_req = Methods(read_port_cnt, i=gen_params.get(RFLayouts).rf_read_in)
         self.rf_read_resp = Methods(
-            2 * gen_params.frontend_superscalarity,
+            read_port_cnt,
             i=gen_params.get(RFLayouts).rf_read_in,
             o=gen_params.get(RFLayouts).rf_read_out,
         )
